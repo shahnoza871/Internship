@@ -1,0 +1,1 @@
+a = "peace of code"
