@@ -4,3 +4,6 @@ for x in fruits:
         fruits.remove(x)
         break
     print(x)
+vegetables = ['potato', 'cucumber']
+for x in vegetabales:
+    print(x)
