@@ -1,3 +1,8 @@
+# all code in one file
+# connected to database 
+# authorized/secured
+# not final: any user can see ALL tasks in db
+
 import random
 from enum import Enum
 from typing import Optional, Union, Annotated
