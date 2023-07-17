@@ -1,9 +1,77 @@
-from imports import *
-from database_conn import *
-from classes import *
+import random
+from enum import Enum
+from typing import Optional, Union, Annotated
+from datetime import datetime, timedelta
+
+
+from pydantic import BaseModel, Field
+from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+
+
+from psycopg import errors as psycopg_errors
+from psycopg.rows import dict_row, class_row
+from psycopg_pool import ConnectionPool
+from contextlib import contextmanager
+
+import psycopg
+from psycopg_pool import ConnectionPool
+from contextlib import contextmanager
+
+
+# TO DO DICTIONARY (connected to database)
+
+
+hostname = "127.0.0.1"
+database = "postgres"
+username = "postgres"
+pwd = "12345689"
+port_id = "5432"
+conn = None
+cursor = None
+
+
+# connect db to api
+pool = ConnectionPool(
+    min_size=5,
+    max_size=12,
+    conninfo=f"dbname={database} user={username} password={pwd} host={hostname} port={port_id}",
+)
+
+
+# connecting psycopg (i.e. database, postgres) with FastAPI
+@contextmanager  # opens and automatically commits and closes
+def db_connection():
+    try:
+        with pool.connection() as conn:
+            yield conn
+    except psycopg_errors.Error as exc:  # raises error in case one occurs
+        detail = None
+        if hasattr(exc, "pgresult") and exc.pgresult:
+            detail = exc.pgresult.error_message.decode()
+            raise HTTPException(status_code=409, detail=detail)
 
 
 # fastapi
+class Status(str, Enum):
+    """All possible statuses of a task"""
+
+    todo = "To do"
+    in_pr = "In progress"
+    done = "Done"
+
+
+class Task(BaseModel):
+    name: str = Field(title="Name of the task")
+    details: Union[str, None] = Field(default=None, title="Further details on the task")
+    status: Union[Status, None] = Field(
+        default=None, title="Current status of the task"
+    )
+
+    class Config:
+        use_enum_values = True
 
 
 app = FastAPI(title="To Do Dictionary")
@@ -131,6 +199,29 @@ fake_users_db = {
         "disabled": False,
     }
 }
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+
+class TokenData(BaseModel):
+    username: Union[str, None] = None
+
+
+class User(BaseModel):
+    username: str
+    disabled: bool
+    created_at: datetime
+    full_name: Optional[str] = None
+
+
+class UserInDB(BaseModel):
+    username: str
+    disabled: bool
+    created_at: datetime
+    hashed_password: str
 
 
 # CryptContext: For working with multiple hash formats at once (such a user account table with multiple existing hash formats)
@@ -262,6 +353,11 @@ async def read_own_items(
 
 
 # USERS DATABASE
+
+
+class UserIn(BaseModel):
+    username: str
+    password: str
 
 
 @app.post("/users/")
