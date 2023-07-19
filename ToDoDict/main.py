@@ -2,7 +2,7 @@ from module1 import *
 from module2 import *
 
 
-app = FastAPI(title="To Do Dictionary")
+app = FastAPI(title="To Do Dictionary", debug=True)
 
 
 # ___To Do Dictionary CREATION (and its basic functions)___
@@ -33,20 +33,20 @@ async def get_task(task_id: int):
 
 # get several/all task by its status
 @app.get("/task/", status_code=200)
-async def task_by_status(status: Optional[Status] = None):
+async def task_by_status(*, status: Optional[Status] = None, user_id : int):
     with db_connection() as conn:
         with conn.cursor(row_factory=dict_row) as cursor:
             if status:
                 cursor.execute(
-                    "SELECT name, details, status FROM tasks WHERE status=%s;",
-                    (status,),
+                    "SELECT name, details, status FROM tasks WHERE status=%s and user_id = %s;",
+                    (status, user_id),
                 )
                 result = cursor.fetchall()
                 conn.commit()
                 return result
 
             if not status:
-                cursor.execute("SELECT * FROM tasks;")
+                cursor.execute("SELECT name, details, status FROM tasks WHERE user_id = %s;", (user_id,))
                 result = cursor.fetchall()
                 conn.commit()
                 return result
@@ -61,23 +61,32 @@ async def task_by_status(status: Optional[Status] = None):
 #             result = cursor.fetchone()
 #             return result
 
-
 # add new task
 @app.post("/task/", status_code=201)
-async def new_task(task: Task):
-    # result = None
+async def new_task(task: Task, name: str):
+    result = None
     with db_connection() as conn:
         with conn.cursor(row_factory=dict_row) as cursor:
             cursor.execute(
                 """
-                INSERT INTO tasks(name, details, status)
-                VALUES(%s, %s, %s)
-                RETURNING *;
-                """,
-                (task.name, task.details, task.status),
+                SELECT id FROM users WHERE username = %s;
+                """, (name,)
+            )
+            user = cursor.fetchone()
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found")
+            cursor.execute(
+                    """                  
+                    INSERT INTO tasks(name, details, status, user_id)
+                    VALUES(%s, %s, %s, %s) RETURNING *;
+                    """,
+                    (task.name, task.details, task.status, user["id"]),
             )
             result = cursor.fetchone()
     return result
+
+
+
 
 
 # update existing task
