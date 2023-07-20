@@ -1,18 +1,10 @@
 # To-Do dict creation & Connection to DB
 
-from enum import Enum
-from contextlib import contextmanager
 from contextlib import contextmanager
 
-import psycopg
 from psycopg import errors as psycopg_errors
-from psycopg.rows import dict_row, class_row
 from psycopg_pool import ConnectionPool
-from psycopg_pool import ConnectionPool
-
-from fastapi import FastAPI, HTTPException, Depends, status
-from typing import Optional, Union, Annotated
-from pydantic import BaseModel, Field
+from fastapi import HTTPException
 
 from config import *
 
@@ -38,21 +30,4 @@ def db_connection():
             raise HTTPException(status_code=409, detail=detail)
 
 
-# fastapi
-class Status(str, Enum):
-    """All possible statuses of a task"""
-
-    todo = "To do"
-    in_pr = "In progress"
-    done = "Done"
-
-
-class Task(BaseModel):
-    name: str = Field(title="Name of the task")
-    details: Union[str, None] = Field(default=None, title="Further details on the task")
-    status: Union[Status, None] = Field(
-        default=None, title="Current status of the task"
-    )
-
-    class Config:
-        use_enum_values = True
+#
