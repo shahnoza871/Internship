@@ -3,16 +3,16 @@
 from datetime import datetime, timedelta
 from typing import Optional, Union, Annotated
 
-from pydantic import BaseModel, Field
-from fastapi import FastAPI, HTTPException, Depends, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from pydantic import BaseModel
+from fastapi import HTTPException, Depends, status
+from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
-import psycopg
 from psycopg.rows import dict_row, class_row
 
 from module1 import db_connection
+
 
 SECRET_KEY = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
 # to generate SECRET_KEY run in terminal: openssl rand -hex 32
@@ -30,6 +30,7 @@ class TokenData(BaseModel):
 
 
 class User(BaseModel):
+    id: int
     username: str
     disabled: bool
     created_at: datetime
@@ -37,6 +38,7 @@ class User(BaseModel):
 
 
 class UserInDB(BaseModel):
+    id: int
     username: str
     disabled: bool
     created_at: datetime
