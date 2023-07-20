@@ -1,5 +1,30 @@
+from enum import Enum
+from pydantic import BaseModel, Field
+from fastapi import FastAPI
+from fastapi.security import OAuth2PasswordRequestForm
+
+
 from module1 import *
 from module2 import *
+
+
+class Status(str, Enum):
+    """All possible statuses of a task"""
+
+    todo = "To do"
+    in_pr = "In progress"
+    done = "Done"
+
+
+class Task(BaseModel):
+    name: str = Field(title="Name of the task")
+    details: Union[str, None] = Field(default=None, title="Further details on the task")
+    status: Union[Status, None] = Field(
+        default=None, title="Current status of the task"
+    )
+
+    class Config:
+        use_enum_values = True
 
 
 app = FastAPI(title="To Do Dictionary", debug=True)
@@ -14,15 +39,19 @@ app = FastAPI(title="To Do Dictionary", debug=True)
     status_code=200,  # code that shows that code works successfully
     response_model=Task,  # in FastAPI plays a role of example (in Example Value Schema)
 )
-async def get_task(task_id: int):
+async def get_task(
+    task_id: int, 
+    current_user: Annotated[User, Depends(get_current_active_user)] # protects the endpoint: gets current_user.id from authorization (user doesn't put it him/herself)
+):
     with db_connection() as conn:  # to connect this FastAPI endpoint with the Database in PostgreSQL
         with conn.cursor(
             row_factory=dict_row
         ) as cursor:  # row_factory turns our list of [name, details, status] into dictionary
             cursor.execute(
-                "SELECT name, details, status FROM tasks WHERE id = %s;",
+                "SELECT name, details, status FROM tasks WHERE id = %s and user_id = %s;",
                 (
                     task_id,
+                    current_user.id,
                 ),  # since it's tuple don't forget "," ; in case of list : [task_id]
             )
             result = (
@@ -33,23 +62,29 @@ async def get_task(task_id: int):
 
 # get several/all task by its status
 @app.get("/task/", status_code=200)
-async def task_by_status(*, status: Optional[Status] = None, user_id : int):
+async def task_by_status(
+    *,
+    status: Optional[Status] = None,
+    current_user: Annotated[User, Depends(get_current_active_user)] # protects the endpoint: gets current_user.id from authorization (user doesn't put it him/herself)
+):
+    if status:
+        sql = (
+            "SELECT name, details, status FROM tasks WHERE status=%s and user_id = %s;"
+        )
+        params = (status, current_user.id)
+    else:
+        sql = "SELECT name, details, status FROM tasks WHERE user_id = %s;"
+        params = (current_user.id,)
+
+    result = None
     with db_connection() as conn:
         with conn.cursor(row_factory=dict_row) as cursor:
-            if status:
-                cursor.execute(
-                    "SELECT name, details, status FROM tasks WHERE status=%s and user_id = %s;",
-                    (status, user_id),
-                )
-                result = cursor.fetchall()
-                conn.commit()
-                return result
-
-            if not status:
-                cursor.execute("SELECT name, details, status FROM tasks WHERE user_id = %s;", (user_id,))
-                result = cursor.fetchall()
-                conn.commit()
-                return result
+            cursor.execute(
+                sql,
+                params,
+            )
+            result = cursor.fetchall()
+    return result
 
 
 # # get task info by its name
@@ -61,37 +96,33 @@ async def task_by_status(*, status: Optional[Status] = None, user_id : int):
 #             result = cursor.fetchone()
 #             return result
 
+
 # add new task
 @app.post("/task/", status_code=201)
-async def new_task(task: Task, name: str):
+async def new_task(
+    task: Task, current_user: Annotated[User, Depends(get_current_active_user)]
+):
     result = None
     with db_connection() as conn:
         with conn.cursor(row_factory=dict_row) as cursor:
             cursor.execute(
-                """
-                SELECT id FROM users WHERE username = %s;
-                """, (name,)
-            )
-            user = cursor.fetchone()
-            if not user:
-                raise HTTPException(status_code=404, detail="User not found")
-            cursor.execute(
-                    """                  
+                """                  
                     INSERT INTO tasks(name, details, status, user_id)
                     VALUES(%s, %s, %s, %s) RETURNING *;
                     """,
-                    (task.name, task.details, task.status, user["id"]),
+                (task.name, task.details, task.status, current_user.id),  # user["id"]
             )
             result = cursor.fetchone()
     return result
 
 
-
-
-
 # update existing task
 @app.patch("/task/{task_id}", status_code=200)
-async def update(task_id: int, task: Task):
+async def update(
+    task_id: int,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    task: Task,
+):
     # result = None
     with db_connection() as conn:
         with conn.cursor(row_factory=class_row(Task)) as cursor:
@@ -100,24 +131,26 @@ async def update(task_id: int, task: Task):
                 """
                 UPDATE tasks
                 SET name=%s, details=%s, status=%s
-                WHERE id = %s
+                WHERE id = %s and user_id = %s
                 RETURNING *;
                 """,
-                (task.name, task.details, task.status, task_id),
+                (task.name, task.details, task.status, task_id, current_user.id),
             ).fetchone()
     return result
 
 
 # delete existing task
 @app.delete("/task/{task_id}", status_code=200, response_model=Task)
-async def delete(task_id: int):
+async def delete(
+    task_id: int, current_user: Annotated[User, Depends(get_current_active_user)]
+):
     with db_connection() as conn:
         with conn.cursor(row_factory=class_row(Task)) as cursor:
             cursor.execute(
                 """
-                DELETE FROM tasks WHERE id = %s RETURNING *;
+                DELETE FROM tasks WHERE id = %s and user_id = %s RETURNING *;
                 """,
-                (task_id,),
+                (task_id, current_user.id),
             )
             result = cursor.fetchone()
     return result
